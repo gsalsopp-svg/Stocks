@@ -23,6 +23,7 @@ from modules.valuation import (
 )
 from modules.scoring import total_score
 from modules.recommendation import build_recommendation
+from modules.data_fetcher import fetch_company_from_yahoo, TickerLookupError
 from sample_data import PRESETS
 
 st.set_page_config(page_title="Value Investing Valuation Tool", layout="wide", page_icon="📈")
@@ -50,11 +51,48 @@ def cur(x, decimals=2, symbol=""):
 st.sidebar.title("📈 Valuation Tool")
 st.sidebar.caption("Long-term value investing — fundamental analysis")
 
-preset_name = st.sidebar.selectbox("Load a company", list(PRESETS.keys()), index=0)
+# --- Load from Yahoo Finance via a ticker symbol ---
+st.sidebar.subheader("Load from Yahoo Finance")
+ticker_text = st.sidebar.text_input(
+    "Ticker symbol", value="", placeholder="e.g. GME, BREE.L, SIG.L, CRH, AAPL",
+    help="UK-listed shares need the '.L' suffix, e.g. 'BREE.L' for Breedon Group or 'SIG.L' for Signature Aviation.",
+)
+load_clicked = st.sidebar.button("Load Company", type="primary", use_container_width=True)
 
-if "company" not in st.session_state or st.session_state.get("_loaded_preset") != preset_name:
+st.sidebar.markdown("— or —")
+preset_name = st.sidebar.selectbox("Load a sample / preset company", list(PRESETS.keys()), index=0)
+st.sidebar.divider()
+
+# --- State management: a ticker load and a preset change are mutually exclusive
+# triggers, since Streamlit reruns the whole script on every single widget
+# interaction. We track the dropdown's last-seen value separately so that
+# clicking "Load Company" never gets silently overwritten by the (unchanged)
+# preset selectbox later in this same run, and vice-versa. ---
+if "_last_preset_value" not in st.session_state:
+    st.session_state["_last_preset_value"] = preset_name
+if "company" not in st.session_state:
     st.session_state["company"] = copy.deepcopy(PRESETS[preset_name])
-    st.session_state["_loaded_preset"] = preset_name
+
+if load_clicked:
+    try:
+        fetched, fetch_warnings = fetch_company_from_yahoo(ticker_text)
+        st.session_state["company"] = fetched
+        st.session_state["_last_preset_value"] = preset_name  # don't let the dropdown re-trigger below
+        if fetch_warnings:
+            st.sidebar.warning(
+                f"Loaded {fetched.name} ({fetched.ticker}), but couldn't retrieve: "
+                + ", ".join(fetch_warnings) + ". Those fields defaulted to 0 / current-year values — "
+                "review them in the sections below."
+            )
+        else:
+            st.sidebar.success(f"Loaded {fetched.name} ({fetched.ticker}) from Yahoo Finance.")
+    except TickerLookupError as e:
+        st.sidebar.error(str(e))
+    except Exception as e:
+        st.sidebar.error(f"Unexpected error loading '{ticker_text}': {e}")
+elif preset_name != st.session_state["_last_preset_value"]:
+    st.session_state["company"] = copy.deepcopy(PRESETS[preset_name])
+    st.session_state["_last_preset_value"] = preset_name
 
 c: CompanyFinancials = st.session_state["company"]
 

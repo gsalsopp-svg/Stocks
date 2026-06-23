@@ -24,6 +24,7 @@ from modules.valuation import (
 from modules.scoring import total_score
 from modules.recommendation import build_recommendation
 from modules.data_fetcher import fetch_company_from_yahoo, TickerLookupError
+from modules.industry_profiles import INDUSTRIES
 from sample_data import PRESETS
 
 st.set_page_config(page_title="Value Investing Valuation Tool", layout="wide", page_icon="📈")
@@ -100,9 +101,17 @@ with st.sidebar.expander("🏷️ Identity", expanded=True):
     c.name = st.text_input("Company name", c.name)
     c.ticker = st.text_input("Ticker", c.ticker)
     c.currency = st.text_input("Currency", c.currency)
+    c.industry = st.selectbox("Industry", INDUSTRIES,
+                               index=INDUSTRIES.index(c.industry) if c.industry in INDUSTRIES else 0,
+                               help="Auto-detected from Yahoo Finance when you load a ticker — override any time. "
+                                    "Nudges a handful of valuation/scoring assumptions (e.g. leverage tolerance) "
+                                    "that genuinely differ by industry; everything else stays the same.")
     c.sector_type = st.selectbox("Special handling type", ["Standard", "Cash-Rich", "Cyclical", "Asset-Heavy"],
                                   index=["Standard", "Cash-Rich", "Cyclical", "Asset-Heavy"].index(c.sector_type)
                                   if c.sector_type in ["Standard", "Cash-Rich", "Cyclical", "Asset-Heavy"] else 0)
+    if c.industry in ("Investment / Financials", "Real Estate (REIT)"):
+        st.caption("ℹ️ For this industry, Price/Book (Ratios tab) is generally a more meaningful valuation "
+                   "lens than EV/EBITDA — worth weighing more heavily in your own judgement.")
 
 with st.sidebar.expander("💰 Core Financials", expanded=False):
     c.share_price = st.number_input("Share Price", value=float(c.share_price), step=0.01, format="%.2f")

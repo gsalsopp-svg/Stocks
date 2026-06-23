@@ -21,6 +21,7 @@ Design notes:
 import yfinance as yf
 
 from .data_models import CompanyFinancials
+from .industry_profiles import map_yahoo_sector_to_industry, get_override
 
 
 class TickerLookupError(Exception):
@@ -216,6 +217,54 @@ def fetch_company_from_yahoo(ticker_symbol: str):
     if ev_reported is None:
         ev_reported = market_cap + total_debt - cash
 
+    # --- Anchor default valuation/DCF assumptions to the company's OWN current
+    # trading multiples and growth profile, rather than flat generic defaults.
+    # This makes each method's starting Fair Value roughly equal to today's
+    # price (a neutral baseline), so the quality/growth/balance-sheet scores
+    # — not an arbitrary fixed multiple — drive whether the stock looks cheap
+    # or expensive. Every value below is still fully editable in the sidebar.
+    def _bounded(value, lo, hi):
+        return value if (value is not None and lo < value < hi) else None
+
+    trailing_pe = _bounded(_info_value(info, "trailingPE"), 0, 100)
+    if trailing_pe is None:
+        trailing_pe = _bounded((price / eps) if eps else None, 0, 100)
+    target_pe = round(trailing_pe, 1) if trailing_pe else 15.0
+
+    current_fcf_multiple = _bounded((market_cap / fcf) if fcf else None, 0, 100)
+    target_fcf_multiple = round(current_fcf_multiple, 1) if current_fcf_multiple else 15.0
+
+    current_ev_ebitda = _bounded(_info_value(info, "enterpriseToEbitda"), 0, 60)
+    if current_ev_ebitda is None:
+        current_ev_ebitda = _bounded((ev_reported / ebitda) if ebitda else None, 0, 60)
+    target_ev_ebitda = round(current_ev_ebitda, 1) if current_ev_ebitda else 10.0
+
+    current_fcf_margin = _bounded((fcf / revenue_ttm) if revenue_ttm else None, -0.5, 0.6)
+    dcf_target_fcf_margin = round(current_fcf_margin, 3) if current_fcf_margin is not None else 0.08
+
+    growth_estimate = _bounded(_info_value(info, "earningsGrowth", "revenueGrowth"), -0.3, 0.6)
+    if growth_estimate is None:
+        peg_growth, graham_growth, dcf_growth_1_5, dcf_growth_6_10 = 0.08, 0.05, 0.04, 0.025
+        warnings.append("growth estimate (PEG/Graham/DCF growth defaulted to generic values — review in the sidebar)")
+    else:
+        peg_growth = round(max(growth_estimate, 0.0), 3)
+        graham_growth = round(max(min(growth_estimate, 0.20), 0.0), 3)
+        dcf_growth_1_5 = round(growth_estimate * 0.8, 3)
+        dcf_growth_6_10 = round(growth_estimate * 0.4, 3)
+
+    # --- Industry auto-detection (best-effort from Yahoo's sector/industry strings;
+    # fully overridable by hand afterwards in the sidebar) ---
+    industry = map_yahoo_sector_to_industry(info.get("sector"), info.get("industry"))
+
+    # A handful of industries behave differently enough (regulated utilities and
+    # project-financed renewables run normal leverage much higher than a retailer,
+    # for instance) that it's worth nudging the discount rate and growth path
+    # accordingly. Anything without an override (the common case) is unaffected.
+    dcf_discount_rate = round(0.09 + get_override(industry, "discount_rate_adj", 0.0), 4)
+    growth_haircut = get_override(industry, "growth_haircut", 1.0)
+    dcf_growth_1_5 = round(dcf_growth_1_5 * growth_haircut, 3)
+    dcf_growth_6_10 = round(dcf_growth_6_10 * growth_haircut, 3)
+
     # --- Prior-year comparatives (column 1 = the period before the most recent) ---
     revenue_py = m(_row_value(income_stmt, "Total Revenue", col=1))
     net_income_py = m(_row_value(income_stmt, "Net Income", col=1))
@@ -239,6 +288,7 @@ def fetch_company_from_yahoo(ticker_symbol: str):
         ticker=ticker_symbol,
         currency=info.get("currency", "USD"),
         sector_type="Standard",
+        industry=industry,
         share_price=float(price),
         market_cap=market_cap,
         revenue_ttm=revenue_ttm,
@@ -266,9 +316,17 @@ def fetch_company_from_yahoo(ticker_symbol: str):
         current_liabilities=current_liabilities,
         total_assets=total_assets,
         forward_eps=forward_eps,
-        # Valuation assumptions, DCF assumptions and Hidden Asset Value fields are
-        # intentionally left at their CompanyFinancials defaults: these are analyst
-        # judgement calls, not data Yahoo Finance can supply, and remain editable
-        # in the sidebar exactly as they were before this feature was added.
+        target_pe=target_pe,
+        target_fcf_multiple=target_fcf_multiple,
+        target_ev_ebitda=target_ev_ebitda,
+        graham_growth=graham_growth,
+        peg_growth=peg_growth,
+        dcf_growth_1_5=dcf_growth_1_5,
+        dcf_growth_6_10=dcf_growth_6_10,
+        dcf_discount_rate=dcf_discount_rate,
+        dcf_target_fcf_margin=dcf_target_fcf_margin,
+        # Hidden Asset Value fields are intentionally left at their CompanyFinancials
+        # defaults (0): these are analyst judgement calls Yahoo Finance can't supply,
+        # and remain editable in the sidebar exactly as before this feature was added.
     )
     return company, warnings

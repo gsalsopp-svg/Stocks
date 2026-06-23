@@ -9,7 +9,7 @@ financial-data aggregators as of ~June 2026 — see Documentation for caveats.
 from modules.data_models import CompanyFinancials
 
 GAMESTOP = CompanyFinancials(
-    name="GameStop Corp.", ticker="GME", currency="USD", sector_type="Cash-Rich",
+    name="GameStop Corp.", ticker="GME", currency="USD", sector_type="Cash-Rich", industry="Retail",
     share_price=21.25, market_cap=9520, revenue_ttm=3630, gross_profit=1196,
     operating_income=286, ebitda=340, net_income=763, fcf=597, cash=9000,
     total_debt=4200, shares_out=448, eps=1.70, book_value=6048, sga=910, rnd=0,
@@ -27,7 +27,7 @@ GAMESTOP = CompanyFinancials(
 )
 
 BREEDON = CompanyFinancials(
-    name="Breedon Group plc", ticker="BREE.L", currency="GBP", sector_type="Asset-Heavy",
+    name="Breedon Group plc", ticker="BREE.L", currency="GBP", sector_type="Asset-Heavy", industry="Materials",
     share_price=3.35, market_cap=1161, revenue_ttm=1714, gross_profit=600,
     operating_income=170, ebitda=279, net_income=82, fcf=133, cash=25,
     total_debt=605, shares_out=347, eps=0.242, book_value=1043, sga=230, rnd=5,

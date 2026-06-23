@@ -15,6 +15,7 @@ class CompanyFinancials:
     ticker: str = ""
     currency: str = "USD"
     sector_type: str = "Standard"  # Standard | Cash-Rich | Cyclical | Asset-Heavy
+    industry: str = "Other"  # see modules/industry_profiles.py for the full list
 
     # --- Core financials (currency units, millions unless noted) ---
     share_price: float = 0.0
